@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Orion-128</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="orion128-styles.css" />
+    <script type="module" src="orion128-page.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Orion-128</h1>
+      <p>i8080 at 2.5&nbsp;MHz, one 64K memory page, 384&times;256 monochrome display, M1 monitor in ROM.</p>
+    </header>А
+
+    <section id="machine">
+      <canvas id="screen" width="384" height="256" tabindex="0"></canvas>
+      <div class="controlPanel">
+        <button id="btnReset">Reset</button>
+        <button id="btnPause">Pause</button>
+        <label for="selScale">Scale</label>
+        <select id="selScale">
+          <option value="1">1x</option>
+          <option value="2" selected>2x</option>
+          <option value="3">3x</option>
+        </select>
+      </div>
+      <p id="status"><span id="spanStatus"></span></p>
+    </section>
+
+    <section id="help">
+      <h2>Keyboard</h2>
+      <p>Click the screen to give it focus, then type. Keys are mapped by
+      physical position, so the host keyboard layout does not matter.</p>
+      <table>
+        <thead>
+          <tr><th>Host key</th><th>Orion key</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Shift</td><td>US &mdash; symbols on the digit keys</td></tr>
+          <tr><td>Ctrl</td><td>SS &mdash; control codes</td></tr>
+          <tr><td>F9</td><td>RUS/LAT &mdash; toggles the Russian character set</td></tr>
+          <tr><td>Escape</td><td>AR2</td></tr>
+          <tr><td>Home</td><td>Clear screen</td></tr>
+          <tr><td>End</td><td>Home cursor</td></tr>
+          <tr><td>Backspace, Delete</td><td>ZB</td></tr>
+          <tr><td>Tab, F6</td><td>Tab, line feed</td></tr>
+          <tr><td>F1 &ndash; F5</td><td>Codes 00 &ndash; 04</td></tr>
+          <tr><td>Arrow keys</td><td>Cursor movement</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Monitor commands</h2>
+      <p>The monitor prompts with <code>-</code>. Addresses are hexadecimal and
+      arguments are separated by commas.</p>
+      <table>
+        <thead>
+          <tr><th>Command</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>D&nbsp;start,end</code></td><td>Dump memory</td></tr>
+          <tr><td><code>M&nbsp;addr</code></td><td>Examine and change memory</td></tr>
+          <tr><td><code>G&nbsp;addr</code></td><td>Run from an address</td></tr>
+          <tr><td><code>F&nbsp;start,end,byte</code></td><td>Fill memory</td></tr>
+          <tr><td><code>C&nbsp;start,end,dest</code></td><td>Compare memory</td></tr>
+          <tr><td><code>T&nbsp;start,end,dest</code></td><td>Copy memory</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </body>
+</html>

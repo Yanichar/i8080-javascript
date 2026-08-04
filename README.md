@@ -65,6 +65,10 @@ This repo contains the following:
 
   A *Space Invaders* emulator which runs the original 1978 game ROM in a modern web browser with a *React*-based front-end (to see this in action, visit: http://8080.cakers.io).
 
+* [src/emulators/orion128](src/emulators/orion128)
+
+  An *Orion-128* emulator: a Soviet 8080-based home computer from 1990. Runs the original M1 monitor ROM in a modern web browser with a plain static front-end. See [src/emulators/orion128/README.md](src/emulators/orion128/README.md).
+
 * [src/cpu-test-program](src/cpu-test-program)
 
   A *CPU Diag* emulator that also runs on the 8080 virtual machine components. This is a piece of software written in 1980 by Kelly Smith of *Microcosm Associates*. It tests the 8080 chip is in full working order. The version in this repo runs in a simple static website and requires a running web-server to use (albeit a small, simple one such as `live-server` or `python -m SimpleHttpServer`).
