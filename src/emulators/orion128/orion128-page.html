@@ -11,7 +11,7 @@
     <header>
       <h1>Orion-128</h1>
       <p>i8080 at 2.5&nbsp;MHz, one 64K memory page, 384&times;256 monochrome display, M1 monitor in ROM.</p>
-    </header>А
+    </header>
 
     <section id="machine">
       <canvas id="screen" width="384" height="256" tabindex="0"></canvas>
@@ -24,6 +24,11 @@
           <option value="2" selected>2x</option>
           <option value="3">3x</option>
         </select>
+        <label for="selProgram">Program</label>
+        <select id="selProgram">
+          <option value="programs/circle.bin">circle.bin</option>
+        </select>
+        <button id="btnLoadProgram">Load &amp; run</button>
       </div>
       <p id="status"><span id="spanStatus"></span></p>
     </section>

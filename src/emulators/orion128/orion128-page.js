@@ -10,6 +10,13 @@ import { KEY_MATRIX, KEY_MODIFIERS } from './keyboard-map.js';
  */
 const MAX_CATCH_UP_MS = 50;
 
+/**
+ * Address programs are loaded and started at. Anything below 0800 would be
+ * hidden by the ROM overlay until the first write to system port No.1, so
+ * programs built with the z88dk `+orion` target are linked to run from here.
+ */
+const PROGRAM_LOAD_ADDRESS = 0x1000;
+
 const _computer = new Orion128Computer();
 
 const _canvas = document.getElementById('screen');
@@ -20,6 +27,8 @@ const _pixels = new Uint32Array(_imageData.data.buffer);
 const _btnReset = document.getElementById('btnReset');
 const _btnPause = document.getElementById('btnPause');
 const _selScale = document.getElementById('selScale');
+const _selProgram = document.getElementById('selProgram');
+const _btnLoadProgram = document.getElementById('btnLoadProgram');
 const _spanStatus = document.getElementById('spanStatus');
 
 let _running = true;
@@ -27,6 +36,7 @@ let _lastFrameTime = 0;
 let _cyclesThisSecond = 0;
 let _secondStartedAt = 0;
 let _measuredMHz = 0;
+let _error = '';
 
 function setScale(scale) {
     _canvas.style.width = `${SCREEN_WIDTH * scale}px`;
@@ -46,13 +56,40 @@ function updateStatus() {
         _running ? 'RUN' : 'PAUSED',
         `PC ${state.ProgramCounter.toString(16).toUpperCase().padStart(4, '0')}`,
         `SP ${state.StackPointer.toString(16).toUpperCase().padStart(4, '0')}`,
+        `page ${mmu.MemoryPage}`,
         `screen ${screen}`,
         `palette ${mmu.AlternatePalette ? '2' : '1'}`,
         mmu.ROMOverlayEnabled ? 'ROM overlay on' : 'ROM overlay off',
         `${_measuredMHz.toFixed(2)} MHz`,
     ];
     if (state.Halt) parts.push('HALTED');
+    if (_error) parts.push(_error);
     _spanStatus.textContent = parts.join('  |  ');
+}
+
+/**
+ * Fetch a binary built for the `+orion` z88dk target, drop it into RAM and
+ * start it. The machine is reset first, so the program gets the same memory
+ * it would have had after power-on.
+ *
+ * @param {string} url Where to fetch the binary from
+ */
+async function loadProgram(url) {
+    _error = '';
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        _computer.Reset();
+        _computer.LoadProgram(bytes, PROGRAM_LOAD_ADDRESS);
+
+        _running = true;
+        _btnPause.textContent = 'Pause';
+        _canvas.focus();
+    } catch (error) {
+        _error = `${url}: ${error.message}`;
+    }
 }
 
 /**
@@ -132,6 +169,8 @@ _btnPause.addEventListener('click', () => {
 
 _selScale.addEventListener('change', () => setScale(Number(_selScale.value)));
 
+_btnLoadProgram.addEventListener('click', () => loadProgram(_selProgram.value));
+
 _canvas.addEventListener('keydown', onKeyDown);
 _canvas.addEventListener('keyup', onKeyUp);
 
@@ -142,3 +181,12 @@ _canvas.addEventListener('blur', () => _computer.Keyboard.ReleaseAll());
 setScale(Number(_selScale.value));
 _canvas.focus();
 requestAnimationFrame(frame);
+
+// Without a ?program= parameter the page comes up in the monitor and nothing is
+// loaded until the Load & run button is pressed. The parameter is there for
+// driving the page from a script.
+const _requestedProgram = new URLSearchParams(window.location.search).get('program');
+if (_requestedProgram) {
+    _selProgram.value = _requestedProgram;
+    loadProgram(_requestedProgram);
+}

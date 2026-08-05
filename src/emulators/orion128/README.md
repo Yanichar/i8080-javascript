@@ -1,9 +1,9 @@
 # Orion-128
 
 The simplest useful build of the *Orion-128*, a Soviet home computer built
-around the i8080 (KR580VM80A): a single 64K memory page, a 384x256 monochrome
-display, the keyboard, and the M1 monitor in ROM. No colour RAM, no second
-memory page, no tape and no disk.
+around the i8080 (KR580VM80A): four 60K memory pages, a 384x256 monochrome
+display, the keyboard, and the M1 monitor in ROM. Colour is not emulated, and
+neither is tape or disk.
 
 The hardware description this was built from is in
 [orion128-spec.md](../../../orion128-spec.md), with the remaining details
@@ -33,6 +33,8 @@ Then open `orion128-page.html`. Click the screen to give it focus and type.
 
 ### Memory map
 
+Page 0, the page the monitor and the display controller live in:
+
 | Range | Purpose |
 |---|---|
 | 0000-BFFF | main RAM |
@@ -43,6 +45,21 @@ Then open `orion128-page.html`. Click the screen to give it focus and type.
 
 Ports are decoded on the high byte of the address only, so each one is mirrored
 across 256 addresses.
+
+### Memory pages
+
+The low two bits of system port No.2 (F900) pick which of four pages is mapped
+into 0000-EFFF. Page 1 is plain RAM at 0000-BFFF with the display's colour RAM
+at C000-EFFF; pages 2 and 3 are plain RAM all the way up to EFFF.
+
+F000-FFFF - the system RAM, the ports and the monitor ROM - belongs to no page
+and reads the same whichever page is selected, which is what lets a program
+running out of page 3 write to F900 and get back. The display controller
+likewise always reads page 0.
+
+Colour is not emulated: page 1 works as RAM, but the colour bits of system port
+No.1 (D1, D2) are recorded and ignored, and the screen is drawn from the
+monochrome palette D0 selects.
 
 ### The ROM overlay
 

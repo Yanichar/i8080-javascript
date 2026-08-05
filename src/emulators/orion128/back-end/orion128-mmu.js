@@ -2,10 +2,25 @@
 
 import { MMU } from '../../../core/mmu.js';
 
-const RAM_SIZE = 0x10000;
 const ROM_BASE = 0xF800;
 const ROM_SIZE = 0x0800;
 const IO_BASE = 0xF400;
+
+/**
+ * 0000-EFFF is banked: each memory page has its own copy of it. F000-FFFF
+ * (system RAM, ports and the monitor ROM) is common to every page, which is
+ * what lets a program running out of page 1 write to F900 and get back.
+ */
+const PAGE_SIZE = 0xF000;
+const PAGE_COUNT = 4;
+const COMMON_BASE = 0xF000;
+const COMMON_SIZE = 0x1000;
+
+/**
+ * Display and colour RAM are 384x256 pixels' worth of bytes, whichever screen
+ * is selected.
+ */
+const SCREEN_SIZE = 0x3000;
 
 /**
  * Base addresses of the four screens selectable through system port No.3.
@@ -13,7 +28,9 @@ const IO_BASE = 0xF400;
 const SCREEN_BASES = [0xC000, 0x8000, 0x4000, 0x0000];
 
 /**
- * Memory map of the Orion-128 (memory page 0, the only page emulated here):
+ * Memory map of the Orion-128.
+ *
+ * Page 0, the page the monitor and the display controller live in:
  *
  *   0000-BFFF   main RAM
  *   C000-EFFF   display RAM, 384x256 pixels
@@ -21,6 +38,10 @@ const SCREEN_BASES = [0xC000, 0x8000, 0x4000, 0x0000];
  *   F400-F7FF   ports (decoded on the high byte only, so each port is
  *               mirrored over 256 addresses)
  *   F800-FFFF   monitor ROM on read / system ports No.1-4 on write
+ *
+ * Page 1 is plain RAM at 0000-BFFF with the display's colour RAM at C000-EFFF;
+ * pages 2 and 3 are plain RAM all the way to EFFF. F000-FFFF belongs to no
+ * page and always reads back as page 0 does.
  *
  * The i8080 starts at 0000 after RESET but the monitor lives at the top of the
  * address space, so the ROM is also overlaid onto 0000-07FF until the first
@@ -38,7 +59,11 @@ class Orion128MMU extends MMU {
             console.log(`WARNING: monitor ROM is ${this._rom.length} bytes, expected ${ROM_SIZE}`);
         }
         this._keyboard = null;
-        this._ram = new Uint8Array(RAM_SIZE);
+        this._pages = [];
+        for (let page = 0; page < PAGE_COUNT; page++) {
+            this._pages.push(new Uint8Array(PAGE_SIZE));
+        }
+        this._common = new Uint8Array(COMMON_SIZE);
         this.Reset();
     }
 
@@ -51,7 +76,7 @@ class Orion128MMU extends MMU {
     }
 
     get Total() {
-        return RAM_SIZE;
+        return PAGE_SIZE * PAGE_COUNT + COMMON_SIZE;
     }
 
     /**
@@ -59,6 +84,14 @@ class Orion128MMU extends MMU {
      */
     get ROMOverlayEnabled() {
         return this._romOverlay;
+    }
+
+    /**
+     * @returns {number} The memory page (0-3) system port No.2 currently has
+     * mapped into 0000-EFFF
+     */
+    get MemoryPage() {
+        return this._systemPort2 & 0x03;
     }
 
     /**
@@ -78,7 +111,8 @@ class Orion128MMU extends MMU {
     }
 
     Reset() {
-        if (this._ram) this._ram.fill(0);
+        if (this._pages) this._pages.forEach((page) => page.fill(0));
+        if (this._common) this._common.fill(0);
         this._bytesUsed = 0;
         this._romOverlay = true;
         this._systemPort1 = 0x00;
@@ -94,8 +128,9 @@ class Orion128MMU extends MMU {
         if (addr >= ROM_BASE) return this._rom[addr - ROM_BASE];
         if (this._romOverlay && addr < ROM_SIZE) return this._rom[addr];
         if (addr >= IO_BASE) return this._readPort(addr);
+        if (addr >= COMMON_BASE) return this._common[addr - COMMON_BASE];
 
-        return this._ram[addr];
+        return this._pages[this.MemoryPage][addr];
     }
 
     Write(val, addr) {
@@ -103,8 +138,7 @@ class Orion128MMU extends MMU {
         val &= 0xFF;
 
         if (addr < IO_BASE) {
-            if (this._ram[addr] === 0 && val !== 0) this._bytesUsed++;
-            this._ram[addr] = val;
+            this._writeMemory(val, addr);
             return;
         }
 
@@ -112,18 +146,20 @@ class Orion128MMU extends MMU {
     }
 
     /**
-     * Read the whole of the currently selected screen without copying it.
+     * Read the whole of the currently selected screen without copying it. The
+     * display controller always reads page 0, whichever page the CPU has
+     * mapped in.
      *
      * @returns {Uint8Array} A 12KB view onto the display RAM
      */
     GetScreenBytes() {
         const base = this.ScreenBase;
-        return this._ram.subarray(base, base + 0x3000);
+        return this._pages[0].subarray(base, base + SCREEN_SIZE);
     }
 
     /**
-     * Write bytes straight into RAM, bypassing the port decoding. Used to load
-     * programs into memory before the CPU starts.
+     * Write bytes straight into memory, bypassing the port decoding. Used to
+     * load programs into memory before the CPU starts.
      *
      * @param {Array|Uint8Array} bytes Bytes to load
      * @param {number} atAddr Address to load them at
@@ -131,10 +167,21 @@ class Orion128MMU extends MMU {
      */
     LoadBytes(bytes, atAddr) {
         for (let i = 0; i < bytes.length; i++) {
-            this._ram[(atAddr + i) & 0xFFFF] = bytes[i] & 0xFF;
+            this._writeMemory(bytes[i] & 0xFF, (atAddr + i) & 0xFFFF);
         }
-        this._bytesUsed += bytes.length;
         return bytes.length;
+    }
+
+    /**
+     * Write to RAM: the banked part goes to whichever page system port No.2 has
+     * selected, the F000-F3FF system RAM is common to all of them.
+     */
+    _writeMemory(val, addr) {
+        const memory = addr >= COMMON_BASE ? this._common : this._pages[this.MemoryPage];
+        const offset = addr >= COMMON_BASE ? addr - COMMON_BASE : addr;
+
+        if (memory[offset] === 0 && val !== 0) this._bytesUsed++;
+        memory[offset] = val;
     }
 
     /**
@@ -184,8 +231,8 @@ class Orion128MMU extends MMU {
                 this._romOverlay = false;
                 break;
 
-            // System port No.2 - memory page. This build only has page 0, so
-            // the value is recorded but has no effect.
+            // System port No.2 - which of the four pages is mapped into
+            // 0000-EFFF.
             case 0xF900:
                 this._systemPort2 = val;
                 break;
@@ -207,4 +254,4 @@ class Orion128MMU extends MMU {
     }
 }
 
-export { Orion128MMU, SCREEN_BASES };
+export { Orion128MMU, SCREEN_BASES, PAGE_COUNT };
