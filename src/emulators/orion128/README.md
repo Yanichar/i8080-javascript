@@ -2,8 +2,8 @@
 
 The simplest useful build of the *Orion-128*, a Soviet home computer built
 around the i8080 (KR580VM80A): four 60K memory pages, a 384x256 monochrome
-display, the keyboard, and the M1 monitor in ROM. Colour is not emulated, and
-neither is tape or disk.
+display, the keyboard, a monitor ROM and a ROM-disk cartridge, both loaded from
+`.bin` files. Colour is not emulated, and neither is tape.
 
 The hardware description this was built from is in
 [orion128-spec.md](../../../orion128-spec.md), with the remaining details
@@ -13,14 +13,30 @@ disassembling the monitor ROM.
 ## Running it
 
 The page uses ES modules, so it needs to be served over HTTP rather than opened
-from the filesystem:
+from the filesystem - and served from the repository root, because the emulator
+imports `src/core/` from above its own directory:
 
 ```
-➜ cd src/emulators/orion128
-➜ live-server
+➜ python3 -m http.server     # in the repository root
 ```
 
-Then open `orion128-page.html`. Click the screen to give it focus and type.
+Then open `http://localhost:8000/src/emulators/orion128/orion128-page.html`.
+Click the screen to give it focus and type. The WebStorm built-in server serves
+the project root the same way, so *Open in Browser* on `orion128-page.html`
+works as it is.
+
+## ROM images
+
+Every `.bin` in `back-end/rom/` turns up in the Monitor ROM and ROM-disk
+drop-downs; there is no list to edit by hand. Servers that list a directory
+(`python3 -m http.server`, live-server, nginx autoindex) are read at run time,
+so dropping a new image in is all it takes. The WebStorm built-in server does
+not list directories - there the page falls back to `back-end/rom/rom-list.json`,
+which is generated from the same directory:
+
+```
+➜ node src/emulators/orion128/back-end/rom/update-rom-list.mjs
+```
 
 ## Hardware
 
@@ -29,7 +45,7 @@ Then open `orion128-page.html`. Click the screen to give it focus and type.
 | CPU | `src/core/i8080.js`, run at 2.5 MHz |
 | Memory & ports | `back-end/orion128-mmu.js` |
 | Keyboard (i8255 PPI) | `back-end/keyboard-device.js` |
-| Monitor ROM | `back-end/rom/monitor-rom.js`, generated from `roms/orion128/M1_rk.bin` |
+| Monitor ROM | any `.bin` in `back-end/rom/`, picked in the Monitor ROM drop-down |
 
 ### Memory map
 
@@ -109,12 +125,5 @@ matrix positions, so the layout the host is using does not matter.
 | F1 - F5 | Codes 00 - 04 |
 | Arrows | Cursor movement |
 
-## Regenerating the ROM module
-
-`back-end/rom/monitor-rom.js` is generated from the binary. To rebuild it:
-
-```
-➜ python3 utils/rom_extractor/rom_extractor.py roms/orion128/M1_rk.bin
-```
-
-then rename the exported `Code` array to `MonitorROM`.
+ROM images are read straight from the `.bin` by `back-end/bin-loader.js`; there
+is no generated ROM module to keep in step.

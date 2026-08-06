@@ -10,7 +10,7 @@
   <body>
     <header>
       <h1>Orion-128</h1>
-      <p>i8080 at 2.5&nbsp;MHz, one 64K memory page, 384&times;256 monochrome display, monitor ROM and ROM-disk loaded from <code>.bin</code> files.</p>
+      <p>i8080 at 2.5&nbsp;MHz, four banked 60K memory pages, 384&times;256 monochrome display, monitor ROM and ROM-disk loaded from <code>.bin</code> files.</p>
     </header>
 
     <section id="machine">
@@ -28,11 +28,6 @@
           <option value="2" selected>2x</option>
           <option value="3">3x</option>
         </select>
-        <label for="selProgram">Program</label>
-        <select id="selProgram">
-          <option value="programs/circle.bin">circle.bin</option>
-        </select>
-        <button id="btnLoadProgram">Load &amp; run</button>
       </div>
       <p id="status"><span id="spanStatus"></span></p>
     </section>

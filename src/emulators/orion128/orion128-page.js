@@ -23,13 +23,6 @@ const NO_ROM_DISK = '(none)';
  */
 const MAX_CATCH_UP_MS = 50;
 
-/**
- * Address programs are loaded and started at. Anything below 0800 would be
- * hidden by the ROM overlay until the first write to system port No.1, so
- * programs built with the z88dk `+orion` target are linked to run from here.
- */
-const PROGRAM_LOAD_ADDRESS = 0x1000;
-
 // Created in main() once the monitor ROM has been fetched.
 let _computer = null;
 
@@ -43,8 +36,6 @@ const _btnPause = document.getElementById('btnPause');
 const _selMonitor = document.getElementById('selMonitor');
 const _selRomDisk = document.getElementById('selRomDisk');
 const _selScale = document.getElementById('selScale');
-const _selProgram = document.getElementById('selProgram');
-const _btnLoadProgram = document.getElementById('btnLoadProgram');
 const _spanStatus = document.getElementById('spanStatus');
 
 let _running = true;
@@ -81,32 +72,6 @@ function updateStatus() {
     if (state.Halt) parts.push('HALTED');
     if (_error) parts.push(_error);
     _spanStatus.textContent = parts.join('  |  ');
-}
-
-/**
- * Fetch a binary built for the `+orion` z88dk target, drop it into RAM and
- * start it. The machine is reset first, so the program gets the same memory
- * it would have had after power-on.
- *
- * @param {string} url Where to fetch the binary from
- */
-async function loadProgram(url) {
-    if (!_computer) return;
-    _error = '';
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        _computer.Reset();
-        _computer.LoadProgram(bytes, PROGRAM_LOAD_ADDRESS);
-
-        _running = true;
-        _btnPause.textContent = 'Pause';
-        _canvas.focus();
-    } catch (error) {
-        _error = `${url}: ${error.message}`;
-    }
 }
 
 /**
@@ -196,8 +161,6 @@ _btnPause.addEventListener('click', () => {
 
 _selScale.addEventListener('change', () => setScale(Number(_selScale.value)));
 
-_btnLoadProgram.addEventListener('click', () => loadProgram(_selProgram.value));
-
 _canvas.addEventListener('keydown', onKeyDown);
 _canvas.addEventListener('keyup', onKeyUp);
 
@@ -206,30 +169,75 @@ _canvas.addEventListener('keyup', onKeyUp);
 _canvas.addEventListener('blur', () => { if (_computer) _computer.Keyboard.ReleaseAll(); });
 
 /**
- * List the `.bin` files in the ROM directory. Tries a plain directory listing
- * first (most static dev servers autoindex), and falls back to a manifest.json
- * committed alongside the images.
+ * Pull the file names out of an HTML directory index. Anything that looks like
+ * a link to a file will do: only the last path segment is kept, so both the
+ * bare `M1rk.bin` python's http.server emits and the absolute
+ * `/back-end/rom/M1rk.bin` other servers emit come out the same.
+ */
+function namesFromHtml(html) {
+    return [...html.matchAll(/href\s*=\s*["']([^"'#?]+)/gi)]
+        .map((match) => decodeURIComponent(match[1].split('/').filter(Boolean).pop() ?? ''));
+}
+
+/**
+ * Pull the file names out of a JSON directory index - an array of either names
+ * or entry objects, depending on the server.
+ */
+function namesFromJson(body) {
+    return JSON.parse(body)
+        .map((entry) => (typeof entry === 'string' ? entry : entry.name ?? entry.href ?? ''))
+        .map((name) => decodeURIComponent(name.split('/').filter(Boolean).pop() ?? ''));
+}
+
+/** Names sorted the way they are shown in the drop-downs. */
+function sortedRoms(names) {
+    return [...new Set(names.filter((name) => name.toLowerCase().endsWith('.bin')))]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * Ask the server what is in the ROM directory. Servers answer a directory
+ * request with either an HTML index (live-server, `python3 -m http.server`,
+ * nginx autoindex) or a JSON array; both are read here. Servers that refuse to
+ * list a directory at all get a `[]` out of this, not an exception.
+ */
+async function listFromServer(dirUrl) {
+    try {
+        const response = await fetch(dirUrl);
+        if (!response.ok) return [];
+
+        const body = await response.text();
+        return sortedRoms(body.trimStart().startsWith('[') ? namesFromJson(body) : namesFromHtml(body));
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * List the `.bin` files in the ROM directory. The directory itself is the
+ * source of truth: whatever is in it shows up in the drop-downs, and no list is
+ * ever written by hand.
+ *
+ * Where the server lists directories the list is built at run time and a new
+ * image appears as soon as it is dropped in. The WebStorm built-in server (and
+ * most production static hosts) will not list a directory, so those fall back
+ * to `rom-list.json`, which `update-rom-list.mjs` generates from the same
+ * directory.
  *
  * @param {string} dirUrl URL of the ROM directory, with a trailing slash
  * @returns {Promise<string[]>} File names, e.g. `['M1rk.bin', ...]`
  */
 async function listBinFiles(dirUrl) {
-    try {
-        const response = await fetch(dirUrl);
-        if (response.ok) {
-            const html = await response.text();
-            const names = [...html.matchAll(/href="([^"#?]+\.bin)(?:[?#][^"]*)?"/gi)]
-                .map((match) => decodeURIComponent(match[1].split('/').pop()));
-            const unique = [...new Set(names)].sort();
-            if (unique.length) return unique;
-        }
-    } catch {
-        // No directory listing; fall through to the manifest.
+    const listed = await listFromServer(dirUrl);
+    if (listed.length) return listed;
+
+    const response = await fetch(`${dirUrl}rom-list.json`);
+    if (!response.ok) {
+        throw new Error(`no ROMs found in ${dirUrl} (HTTP ${response.status} for rom-list.json)`
+            + ' - run back-end/rom/update-rom-list.mjs');
     }
 
-    const response = await fetch(`${dirUrl}manifest.json`);
-    if (!response.ok) throw new Error(`no ROM listing (HTTP ${response.status})`);
-    return await response.json();
+    return sortedRoms(await response.json());
 }
 
 /**
@@ -295,15 +303,6 @@ async function main() {
 
     setScale(Number(_selScale.value));
     requestAnimationFrame(frame);
-
-    // Without a ?program= parameter the page comes up in the monitor and nothing
-    // is loaded until the Load & run button is pressed. The parameter is there
-    // for driving the page from a script.
-    const requestedProgram = new URLSearchParams(window.location.search).get('program');
-    if (requestedProgram) {
-        _selProgram.value = requestedProgram;
-        loadProgram(requestedProgram);
-    }
 }
 
 main();

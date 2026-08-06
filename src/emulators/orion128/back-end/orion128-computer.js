@@ -24,9 +24,9 @@ const PALETTES = [
 ];
 
 /**
- * The simplest useful Orion-128: a single 64KB memory page, monochrome
- * display, keyboard, and the M1 monitor in ROM. No colour RAM, no tape, no
- * disk.
+ * The simplest useful Orion-128: four banked 60K memory pages, monochrome
+ * display, keyboard, a monitor ROM loaded from a `.bin` and a ROM-disk
+ * cartridge on user port No.1. Colour is not emulated, and neither is tape.
  */
 class Orion128Computer extends Computer {
 
