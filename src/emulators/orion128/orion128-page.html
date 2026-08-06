@@ -10,7 +10,7 @@
   <body>
     <header>
       <h1>Orion-128</h1>
-      <p>i8080 at 2.5&nbsp;MHz, one 64K memory page, 384&times;256 monochrome display, M1 monitor in ROM.</p>
+      <p>i8080 at 2.5&nbsp;MHz, one 64K memory page, 384&times;256 monochrome display, monitor ROM and ROM-disk loaded from <code>.bin</code> files.</p>
     </header>
 
     <section id="machine">
@@ -18,6 +18,10 @@
       <div class="controlPanel">
         <button id="btnReset">Reset</button>
         <button id="btnPause">Pause</button>
+        <label for="selMonitor">Monitor ROM</label>
+        <select id="selMonitor"></select>
+        <label for="selRomDisk">ROM-disk</label>
+        <select id="selRomDisk"></select>
         <label for="selScale">Scale</label>
         <select id="selScale">
           <option value="1">1x</option>

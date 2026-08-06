@@ -3,7 +3,7 @@
 import { Computer } from '../../../core/computer.js';
 import { Orion128MMU } from './orion128-mmu.js';
 import { KeyboardDevice } from './keyboard-device.js';
-import { MonitorROM } from './rom/monitor-rom.js';
+import { RomDiskDevice } from './rom-disk-device.js';
 
 const SCREEN_WIDTH = 384;
 const SCREEN_HEIGHT = 256;
@@ -30,23 +30,55 @@ const PALETTES = [
  */
 class Orion128Computer extends Computer {
 
-    constructor() {
+    /**
+     * @param {Array|Uint8Array} monitorRom The 2KB monitor ROM image, as loaded
+     * from a `.bin` by `loadBinary()`.
+     * @param {Array|Uint8Array|null} [romDiskImage] The ROM-disk cartridge image
+     * on user port No.1. Pass `null` (or an empty image) for an empty user port.
+     */
+    constructor(monitorRom, romDiskImage = null) {
         super();
 
         this._keyboard = new KeyboardDevice();
 
+        // The ROM-disk cartridge on user port No.1, read by the `R` command. A
+        // null/empty image means nothing is plugged in and the port floats high.
+        this._romDisk = (romDiskImage && romDiskImage.length)
+            ? new RomDiskDevice(romDiskImage)
+            : null;
+
         // Replace the generic MMU installed by `Computer` with one that knows
         // about the Orion's ROM overlay and memory-mapped ports.
-        this._mmu = new Orion128MMU(MonitorROM);
+        this._mmu = new Orion128MMU(monitorRom);
         this._mmu.ConnectKeyboard(this._keyboard);
+        this._mmu.ConnectRomDisk(this._romDisk);
         this._mmu.ConnectBus(this.Bus);
         this.Bus.ConnectMMU(this._mmu);
+
+        // Some monitors (e.g. M2) drive the system ports with i8080 OUT/IN
+        // opcodes rather than memory writes. On real hardware an `OUT n`
+        // duplicates the port number onto both halves of the address bus, and
+        // the Orion decodes its ports on the high byte, so `OUT 0F9H` reaches
+        // the same latch as `STA F900`. Bridge the CPU's port I/O onto the MMU
+        // with that same (n << 8) | n address so both styles work.
+        const ioBridge = {
+            Read: (port) => this._mmu.Read(((port << 8) | port) & 0xFFFF),
+            Write: (port, val) => this._mmu.Write(val, ((port << 8) | port) & 0xFFFF),
+        };
+        for (let port = 0; port < 256; port++) {
+            this.Bus.ConnectDeviceToReadPort(port, ioBridge);
+            this.Bus.ConnectDeviceToWritePort(port, ioBridge);
+        }
 
         this.Reset();
     }
 
     get Keyboard() {
         return this._keyboard;
+    }
+
+    get RomDisk() {
+        return this._romDisk;
     }
 
     get MMU() {
@@ -67,6 +99,7 @@ class Orion128Computer extends Computer {
 
     Reset() {
         this._keyboard.Reset();
+        if (this._romDisk) this._romDisk.Reset();
         super.Reset();
     }
 

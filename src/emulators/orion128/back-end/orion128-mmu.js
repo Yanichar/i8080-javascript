@@ -59,6 +59,7 @@ class Orion128MMU extends MMU {
             console.log(`WARNING: monitor ROM is ${this._rom.length} bytes, expected ${ROM_SIZE}`);
         }
         this._keyboard = null;
+        this._romDisk = null;
         this._pages = [];
         for (let page = 0; page < PAGE_COUNT; page++) {
             this._pages.push(new Uint8Array(PAGE_SIZE));
@@ -69,6 +70,14 @@ class Orion128MMU extends MMU {
 
     ConnectKeyboard(keyboard) {
         this._keyboard = keyboard;
+    }
+
+    /**
+     * Plug a ROM-disk cartridge into user port No.1 (F500-F503), which is what
+     * the monitor's `R` command reads its bootstrap image from.
+     */
+    ConnectRomDisk(romDisk) {
+        this._romDisk = romDisk;
     }
 
     get BytesUsed() {
@@ -193,9 +202,12 @@ class Orion128MMU extends MMU {
             case 0xF400:
                 return this._keyboard ? this._keyboard.Read(addr) : 0xFF;
 
-            // User and expansion ports: nothing is plugged in, so the bus
-            // floats high.
+            // User port No.1: the ROM-disk cartridge, if one is plugged in.
             case 0xF500:
+                return this._romDisk ? this._romDisk.Read(addr) : 0xFF;
+
+            // Other user and expansion ports: nothing is plugged in, so the
+            // bus floats high.
             case 0xF600:
             case 0xF700:
                 return 0xFF;
@@ -213,6 +225,7 @@ class Orion128MMU extends MMU {
 
             case 0xF500:
                 this._userPorts[0] = val;
+                if (this._romDisk) this._romDisk.Write(addr, val);
                 break;
 
             case 0xF600:
